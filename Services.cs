@@ -90,7 +90,7 @@ namespace NestjsConnector
             }
             return Result;
         }
-        public static async Task<string> Send(string name, string pattern, string data = "", Callback callback = null)
+        public static async Task<string> Send(string name, string pattern, object data = null, Callback callback = null)
         {
             NestService item = services.FirstOrDefault(x => x.Name.ToUpper() != name.ToUpper());
             if (item == null)
@@ -110,7 +110,7 @@ namespace NestjsConnector
             return Id;
         }
 
-        public static async Task<string> Send(int port, string pattern, string data = "", Callback callback = null)
+        public static async Task<string> Send(int port, string pattern, object data = null, Callback callback = null)
 
         {
             NestService item = services.FirstOrDefault(x => x.Port == port);
@@ -129,7 +129,7 @@ namespace NestjsConnector
 
             return Id;
         }
-        private static async Task SendProccess(NestService item, string id, string pattern, string data = "", Callback callback = null)
+        private static async Task SendProccess(NestService item, string id, string pattern, object data =null, Callback callback = null)
         { 
             TcpClient client = clients[item.Name];
             if (client == null || !client.Connected)
