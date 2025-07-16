@@ -10,7 +10,7 @@
     <PackAsTool>False</PackAsTool>
     <Company></Company>
     <Authors>Ehsan Hosseinpour</Authors>
-    <Version>1.8.0</Version>
+    <Version>1.8.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

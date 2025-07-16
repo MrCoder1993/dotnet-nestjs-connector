@@ -12,6 +12,7 @@ namespace NestjsConnector
 {
     public static class Services
     {
+        public static int _timeout = 5;
         private static List<NestService> services = new List<NestService>();
         private static Dictionary<string, TcpClient> clients = new Dictionary<string, TcpClient>();
         public delegate void Callback(string sender, ServiceEventArgs args);
@@ -23,16 +24,19 @@ namespace NestjsConnector
             {
                 if (!services.Any(x => x.Name.ToUpper() == item.Name.ToUpper()))
                 {
+
                     item.Name = item.Name.ToUpper();
                     services.Add(item);
                     Result = true;
                     TcpClient client = new TcpClient();
+                    client.SendTimeout = _timeout * 1000;
                     client.Connect(item.Host, item.Port);
                     clients.Add(item.Name, client);
                 }
             }
             catch (Exception ex)
             {
+                Console.WriteLine("NestjsConnector Error : " + ex.ToString());
                 throw;
             }
             return Result;
@@ -47,44 +51,132 @@ namespace NestjsConnector
                 Name = port.ToString(),
             };
 
-            if (callback != null) 
-            item.callback += ((sender,args) => callback(sender.ToString(), args));
+            if (callback != null)
+                item.callback += ((sender, args) => callback(sender.ToString(), args));
+
             try
             {
-                if (!services.Any(x => x.Name.ToUpper() == item.Name.ToUpper()))
+                if (!services.Any(x => x.Name.ToUpper() == item.Name.ToUpper()) || !clients.ContainsKey(item.Name) || !clients[item.Name].Connected)
                 {
+                    if (clients.ContainsKey(item.Name) && !clients[item.Name].Connected)
+                    {
+                        removeService(port);
+                    }
                     item.Name = item.Name.ToUpper();
                     services.Add(item);
                     Result = true;
 
                     TcpClient client = new TcpClient();
+                    client.SendTimeout = _timeout * 1000;
+
                     client.Connect(host, port);
+
                     clients.Add(item.Name, client);
                 }
+ 
             }
             catch (Exception ex)
             {
+                Console.WriteLine("NestjsConnector Error : " + ex.Message.ToString());
+
                 throw;
             }
             return Result;
         }
 
 
+        public static bool isConnect(int port)
+        {
+            NestService item = services.FirstOrDefault(x => x.Port == port);
+
+            var service = services.FirstOrDefault(x => x.Port == port);
+            if (service != null && clients.ContainsKey(service.Name))
+                return clients[service.Name]?.Connected ?? false;
+            else return false;
+        }
+        public static int getCount(int port)
+        {
+            return services.Count(x => x.Port == port);
+
+        }
+        public static int getCount()
+        {
+            return clients.Count;
+
+        }
+        public static bool removeService(int port)
+        {
+            bool Result = false;
+            try
+            {
+                var removeServices = services.Where(x => x.Port == port).ToList();
+                foreach (var service in removeServices)
+                {
+                    try
+                    {
+                    
+
+                        if (clients.ContainsKey(service.Name))
+                        {
+                            TcpClient client = clients[service.Name];
+                            if (client != null && client.Connected)
+                                client.Close();
+                            clients.Remove(service.Name);
+                        }
+                        services.Remove(service);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("NestjsConnector removeService Error : " + ex.Message.ToString());
+
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("NestjsConnector Error : " + ex.Message.ToString());
+
+                throw;
+            }
+            return Result;
+        }
         public static bool removeService(string name)
         {
             bool Result = false;
             try
             {
-                services = services.Where(x => x.Name.ToUpper() != name.ToUpper()).ToList();
-                TcpClient client = clients[name];
-                if (client != null && client.Connected)
-                    client.Close();
+                var removeServices = services.Where(x => x.Name.ToUpper() == name.ToUpper()).ToList();
 
-                clients.Remove(name);
+
+                foreach (var service in removeServices)
+                {
+                    try
+                    {
+
+                     
+
+                        if (clients.ContainsKey(service.Name))
+                        {
+                            TcpClient client = clients[service.Name];
+                            if (client != null && client.Connected)
+                                client.Close();
+
+                            clients.Remove(service.Name);
+                        }
+                        services.Remove(service);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("NestjsConnector removeService Error : " + ex.Message.ToString());
+
+                    }
+                }
 
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine("NestjsConnector removeService Error : " + ex.Message.ToString());
 
                 throw;
             }
@@ -122,15 +214,21 @@ namespace NestjsConnector
 
             string Id = Guid.NewGuid().ToString();
 
-            Task.Run(() =>
-            {
-                SendProccess(item, Id, pattern, data, callback);
-            });
+            await Task.Run(() =>
+               {
+                   SendProccess(item, Id, pattern, data, callback);
+               });
 
             return Id;
         }
-        private static async Task SendProccess(NestService item, string id, string pattern, object data =null, Callback callback = null)
-        { 
+        private static async Task SendProccess(NestService item, string id, string pattern, object data = null, Callback callback = null)
+        {
+            if (!clients.ContainsKey(item.Name))
+            {
+                removeService(item.Name);
+                throw new Exception("Service NotFound");
+
+            }
             TcpClient client = clients[item.Name];
             if (client == null || !client.Connected)
             {
@@ -168,12 +266,12 @@ namespace NestjsConnector
             int bytesRead = stream.Read(buffer, 0, buffer.Length);
             string response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
- 
+
             stream.Close();
             //client.Close();
 
-            JObject result = JsonConvert.DeserializeObject<JObject>(response.Split("#")[1]); 
-           
+            JObject result = JsonConvert.DeserializeObject<JObject>(response.Split("#")[1]);
+
             if (callback != null)
                 callback.Invoke(pattern, new ServiceEventArgs() { data = result });
             item.onResponse(pattern, new ServiceEventArgs() { data = result });
